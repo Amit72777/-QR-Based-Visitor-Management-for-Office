@@ -5,6 +5,7 @@
  *   - authAPI.updateProfile()
  *   - visitorAPI.register() now sends FormData (supports photo)
  *   - adminAPI.updateBranch(), adminAPI.activateUser()
+ *   - adminAPI.get() — for audit-logs/search endpoint
  */
 import axios from 'axios';
 
@@ -55,7 +56,6 @@ export const authAPI = {
 
 // ─── Visitors ─────────────────────────────────────────────────────────────────
 export const visitorAPI = {
-  // JSON body — photo_data is a base64 string inside the payload
   register: (data)   => api.post('/visitors/register', data),
   list:     (params) => api.get('/visitors',    { params }),
   getById:  (id)     => api.get(`/visitors/${id}`),
@@ -74,14 +74,17 @@ export const adminAPI = {
   report:    (params) => api.get('/admin/report',     { params }),
   auditLogs: (params) => api.get('/admin/audit-logs', { params }),
 
+  // ✅ FIX: was axiosInstance.get — should be api.get
+  get: (url) => api.get(url),
+
   // Branches
   branches:     ()     => api.get('/admin/branches'),
   createBranch: (data) => api.post('/admin/branches', data),
 
   // Users
-  users:        ()     => api.get('/admin/users'),
-  createUser:   (data) => api.post('/admin/users', data),
-  deleteUser:   (id)   => api.delete(`/admin/users/${id}`),
+  users:      ()     => api.get('/admin/users'),
+  createUser: (data) => api.post('/admin/users', data),
+  deleteUser: (id)   => api.delete(`/admin/users/${id}`),
 };
 
 export default api;

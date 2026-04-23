@@ -24,6 +24,8 @@ import ProfilePage      from './pages/ProfilePage';
 import BranchesPage     from './pages/BranchesPage';
 import AuditPage        from './pages/AuditPage';
 
+
+
 // Smart home redirect based on role
 const HomeRedirect = () => {
   const { user } = useAuth();
