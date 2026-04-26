@@ -1,10 +1,9 @@
 """
-Visit service — handles all visitor registration and scan logic.
+Visit service — visitor registration + QR scan logic.
 
-v2 changes:
-  - register(): saves visitor photo (base64 → file), sends QR email
-  - scan():     uses configurable QR_EXPIRY_HOURS from settings
-  - qr_expiry_hours stored on the Visit record for auditing
+v2.1 change:
+  - register() ab Visit ke saath email_sent flag bhi return karta hai
+    taaki frontend ko pata chale email gaya ya nahi.
 """
 import os, base64, logging
 from sqlalchemy.orm import Session
@@ -12,40 +11,32 @@ from sqlalchemy      import func
 from fastapi         import HTTPException
 from datetime        import datetime, timedelta
 
-from app.db.models   import Visitor, Visit, Branch, User, VisitStatus, VisitPurpose
+from app.db.models        import Visitor, Visit, Branch, User, VisitStatus, VisitPurpose
 from app.schemas.schemas  import VisitorRegister
-from app.utils.qr    import generate_token, build_qr_image, qr_expiry, validate_qr
-from app.utils.audit import log_action
-from app.utils.email import send_qr_email
-from app.core.config import settings
+from app.utils.qr         import generate_token, build_qr_image, qr_expiry, validate_qr
+from app.utils.audit      import log_action
+from app.utils.email      import send_qr_email
+from app.core.config      import settings
 
 log = logging.getLogger(__name__)
 
 
 def _save_photo(photo_data: str, visitor_phone: str) -> str | None:
-    """
-    Decode a base64 photo string and write it to disk.
-    Returns the relative file path (e.g. 'uploads/photos/9876543210.jpg')
-    or None if anything goes wrong.
-    """
+    """Base64 photo decode karke disk pe save karo."""
     try:
-        # Strip the data URI header if present ("data:image/jpeg;base64,...")
         if "," in photo_data:
             header, raw = photo_data.split(",", 1)
-            ext = header.split("/")[1].split(";")[0]  # jpeg, png, webp…
+            ext = header.split("/")[1].split(";")[0]
         else:
             raw, ext = photo_data, "jpg"
 
         os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
-
-        # Use phone as filename — sanitise it first
         safe_phone = "".join(c for c in visitor_phone if c.isalnum())
         filename   = f"{safe_phone}_{int(datetime.utcnow().timestamp())}.{ext}"
         filepath   = os.path.join(settings.UPLOAD_DIR, filename)
 
         with open(filepath, "wb") as f:
             f.write(base64.b64decode(raw))
-
         return filepath
     except Exception as exc:
         log.warning("Could not save visitor photo: %s", exc)
@@ -55,17 +46,14 @@ def _save_photo(photo_data: str, visitor_phone: str) -> str | None:
 class VisitService:
 
     @staticmethod
-    def register(payload: VisitorRegister, db: Session) -> Visit:
+    def register(payload: VisitorRegister, db: Session) -> dict:
         """
-        Register a visitor:
-          1. Validate the branch exists
-          2. Find or create Visitor record (keyed on phone number)
-          3. Save photo if provided
-          4. Generate QR token + image
-          5. Create Visit record
-          6. Fire-and-forget: send QR via email
+        Visitor register karo aur ek dict return karo jisme:
+          - visit: Visit object (QR data ke saath)
+          - email_sent: True/False (frontend pop-up ke liye)
+          - email_address: visitor ka email (pop-up mein dikhane ke liye)
         """
-        # Make sure the branch is real and active
+        # Branch check
         branch = db.query(Branch).filter(
             Branch.id == payload.branch_id,
             Branch.is_active == True,
@@ -73,10 +61,10 @@ class VisitService:
         if not branch:
             raise HTTPException(
                 status_code=404,
-                detail=f"Branch with id={payload.branch_id} not found. Check /api/admin/branches."
+                detail=f"Branch id={payload.branch_id} nahi mili. /api/admin/branches check karo."
             )
 
-        # Look up existing visitor by phone, or create new one
+        # Visitor dhundo ya naya banao
         visitor = db.query(Visitor).filter(Visitor.phone == payload.phone).first()
         if not visitor:
             visitor = Visitor(
@@ -86,21 +74,40 @@ class VisitService:
                 company_name=payload.company_name,
             )
             db.add(visitor)
-            db.flush()  # gives us visitor.id without committing
+            db.flush()
         else:
-            # Returning visitor — update their name in case it changed
             visitor.full_name = payload.full_name
+            # Agar email update hua toh save karo
+            if payload.email:
+                visitor.email = payload.email
 
-        # Save photo to disk if the frontend sent one
+        # Photo save karo agar tha
         if payload.photo_data:
             path = _save_photo(payload.photo_data, payload.phone)
             if path:
                 visitor.photo_path = path
 
-        # Build the QR code
+        # ── QR validity calculate karo ──────────────────────────────────────
+        from app.schemas.schemas import QR_VALIDITY_HOURS
+        from datetime import timedelta
+
+        validity_type = getattr(payload, "qr_validity_type", None) or "hourly"
+        qr_hours_custom = getattr(payload, "qr_hours", None)
+
+        if validity_type == "one_time":
+            # one_time = 100 years expiry (expires logically after checkout)
+            expiry_hours = settings.QR_EXPIRY_HOURS  # use default, handle in scan
+            is_one_time  = True
+        elif validity_type == "hourly":
+            expiry_hours = qr_hours_custom if qr_hours_custom else settings.QR_EXPIRY_HOURS
+            is_one_time  = False
+        else:
+            expiry_hours = QR_VALIDITY_HOURS.get(validity_type) or settings.QR_EXPIRY_HOURS
+            is_one_time  = False
+
         token   = generate_token()
         qr_img  = build_qr_image(token)
-        expires = qr_expiry()
+        expires = datetime.utcnow() + timedelta(hours=expiry_hours)
 
         visit = Visit(
             visitor_id=visitor.id,
@@ -111,7 +118,7 @@ class VisitService:
             qr_token=token,
             qr_image=qr_img,
             qr_expires=expires,
-            qr_expiry_hours=settings.QR_EXPIRY_HOURS,
+            qr_expiry_hours=expiry_hours,
             status=VisitStatus.registered,
         )
         db.add(visit)
@@ -122,12 +129,15 @@ class VisitService:
         db.commit()
         db.refresh(visit)
         db.refresh(visitor)
-        visit.visitor  # trigger lazy load before returning
+        visit.visitor  # lazy load
 
-        # Send QR via email (non-blocking — failure won't break registration)
+        # Email bhejo aur result note karo
+        email_sent    = False
+        email_address = visitor.email or ""
+
         if visitor.email:
             expires_str = expires.strftime("%b %d, %Y at %I:%M %p UTC")
-            send_qr_email(
+            email_sent  = send_qr_email(
                 to_email=visitor.email,
                 visitor_name=visitor.full_name,
                 qr_image_b64=qr_img,
@@ -135,21 +145,23 @@ class VisitService:
                 qr_expires_str=expires_str,
             )
 
-        return visit
+        # Visit object ke saath email status bhi return karo
+        return {
+            "visit":         visit,
+            "email_sent":    email_sent,
+            "email_address": email_address,
+        }
 
     @staticmethod
     def scan(qr_token: str, guard_id: int, db: Session):
-        """
-        Smart scan — first scan checks IN, second scan checks OUT.
-        Guards use the same button for both actions.
-        """
+        """Smart scan — pehla scan check-in, doosra check-out."""
         visit = db.query(Visit).filter(Visit.qr_token == qr_token).first()
         if not visit:
-            raise HTTPException(status_code=404, detail="Invalid QR code — no matching visit found.")
+            raise HTTPException(status_code=404, detail="Invalid QR code — koi visit nahi mila.")
 
         visitor = visit.visitor
 
-        # ── Check-out path ────────────────────────────────────────
+        # Check-out path
         if visit.status == VisitStatus.checked_in:
             now      = datetime.utcnow()
             duration = max(1, int((now - visit.checked_in_at).total_seconds() / 60))
@@ -175,7 +187,7 @@ class VisitService:
                 "duration_mins": duration,
             }
 
-        # ── Check-in path — validate QR first ─────────────────────
+        # Check-in path
         valid, reason = validate_qr(visit.status.value, visit.qr_expires)
         if not valid:
             raise HTTPException(status_code=400, detail=reason)
@@ -215,7 +227,6 @@ class VisitService:
         today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
         week_start  = today_start - timedelta(days=today_start.weekday())
 
-        # Small helper to optionally filter by branch
         def bq(q):
             return q.filter(Visit.branch_id == branch_id) if branch_id else q
 
@@ -239,7 +250,6 @@ class VisitService:
             avg_q = avg_q.filter(Visit.branch_id == branch_id)
         avg_duration = round(float(avg_q.scalar() or 0), 1)
 
-        # Build the "currently inside" list
         inside_q = db.query(Visit).filter(Visit.status == VisitStatus.checked_in)
         if branch_id:
             inside_q = inside_q.filter(Visit.branch_id == branch_id)
@@ -260,7 +270,6 @@ class VisitService:
                 "photo_path":     v.visitor.photo_path,
             })
 
-        # Recent 15 check-in events
         recent_q = db.query(Visit).filter(Visit.checked_in_at != None)
         if branch_id:
             recent_q = recent_q.filter(Visit.branch_id == branch_id)
@@ -279,7 +288,6 @@ class VisitService:
             "status":         v.status.value,
         } for v in recent]
 
-        # Purpose breakdown for today
         pb_q = db.query(Visit.purpose, func.count(Visit.id)).filter(
             Visit.checked_in_at >= today_start
         )
@@ -331,8 +339,8 @@ class VisitService:
         ]
 
         return {
-            "period_days": days,
+            "period_days":  days,
             "daily_counts": daily,
-            "top_hosts": top_hosts,
+            "top_hosts":    top_hosts,
             "total_visits": total,
         }

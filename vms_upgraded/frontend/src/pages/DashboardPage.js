@@ -49,13 +49,57 @@ const MiniBar = ({ value, max, color }) => (
   </div>
 );
 
+/**
+ * Backend UTC time ko Indian Standard Time (IST) mein convert karo.
+ * Backend "2026-04-24T06:47:48" bhejta hai — Z nahi hota end mein.
+ * Isliye manually +5:30 add karte hain.
+ */
+const toIST = (utcString) => {
+  if (!utcString) return '—';
+  try {
+    // String ke end mein Z lagao taaki browser UTC samjhe
+    const normalized = utcString.endsWith('Z') ? utcString : utcString + 'Z';
+    return new Date(normalized).toLocaleString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      hour:     '2-digit',
+      minute:   '2-digit',
+      hour12:   true,
+    });
+  } catch {
+    return utcString;
+  }
+};
+
+// Date ke liye — weekday short naam IST mein
+const toISTDate = (dateStr) => {
+  if (!dateStr) return '';
+  try {
+    // date string "2026-04-24" ko parse karo
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const date = new Date(y, m - 1, d); // local date
+    return date.toLocaleDateString('en-IN', { weekday: 'short' });
+  } catch {
+    return dateStr;
+  }
+};
+
+// Last updated time IST mein
+const nowIST = () =>
+  new Date().toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    hour:     '2-digit',
+    minute:   '2-digit',
+    second:   '2-digit',
+    hour12:   true,
+  });
+
 const DashboardPage = () => {
-  const [data,      setData]      = useState(null);
-  const [report,    setReport]    = useState(null);
-  const [loading,   setLoading]   = useState(true);
-  const [branches,  setBranches]  = useState([]);
-  const [branchId,  setBranchId]  = useState('');
-  const [activeTab, setActiveTab] = useState('overview');
+  const [data,        setData]        = useState(null);
+  const [report,      setReport]      = useState(null);
+  const [loading,     setLoading]     = useState(true);
+  const [branches,    setBranches]    = useState([]);
+  const [branchId,    setBranchId]    = useState('');
+  const [activeTab,   setActiveTab]   = useState('overview');
   const [lastUpdated, setLastUpdated] = useState(null);
 
   const fetchData = useCallback(async () => {
@@ -67,7 +111,7 @@ const DashboardPage = () => {
       ]);
       setData(dashRes.data);
       setReport(reportRes.data);
-      setLastUpdated(new Date().toLocaleTimeString());
+      setLastUpdated(nowIST());
     } catch (e) {
       console.error(e);
     } finally {
@@ -82,7 +126,7 @@ const DashboardPage = () => {
   useEffect(() => {
     setLoading(true);
     fetchData();
-    const interval = setInterval(fetchData, 30000); // auto-refresh every 30s
+    const interval = setInterval(fetchData, 30000);
     return () => clearInterval(interval);
   }, [fetchData]);
 
@@ -101,7 +145,7 @@ const DashboardPage = () => {
           <div>
             <h1 className="page-title">Dashboard</h1>
             <p className="page-subtitle">
-              {lastUpdated ? `Last updated: ${lastUpdated}` : 'Loading...'}
+              {lastUpdated ? `Last updated: ${lastUpdated} IST` : 'Loading...'}
               <span className="live-dot">●</span> Live
             </p>
           </div>
@@ -135,41 +179,23 @@ const DashboardPage = () => {
           ))}
         </div>
 
-        {/* ── OVERVIEW ───────────────────────────────────────────── */}
+        {/* ── OVERVIEW ─────────────────────────── */}
         {activeTab === 'overview' && data && (
           <>
             <div className="stats-grid">
-              <StatCard
-                label="Currently Inside"
-                value={data.currently_inside}
-                icon="🏢"
-                color="#6366f1"
-                sub="visitors in building"
-              />
-              <StatCard
-                label="Total Today"
-                value={data.total_today}
-                icon="📅"
-                color="#10b981"
-                sub="check-ins today"
-              />
-              <StatCard
-                label="This Week"
-                value={data.total_this_week}
-                icon="📊"
-                color="#f59e0b"
-                sub="total this week"
-              />
+              <StatCard label="Currently Inside" value={data.currently_inside}
+                icon="🏢" color="#6366f1" sub="visitors in building" />
+              <StatCard label="Total Today" value={data.total_today}
+                icon="📅" color="#10b981" sub="check-ins today" />
+              <StatCard label="This Week" value={data.total_this_week}
+                icon="📊" color="#f59e0b" sub="total this week" />
               <StatCard
                 label="Avg Duration"
                 value={data.avg_duration_mins > 0 ? `${data.avg_duration_mins}m` : '—'}
-                icon="⏱"
-                color="#ec4899"
-                sub="average visit today"
+                icon="⏱" color="#ec4899" sub="average visit today"
               />
             </div>
 
-            {/* Purpose breakdown */}
             {Object.keys(data.purpose_breakdown || {}).length > 0 && (
               <div className="card">
                 <h3 className="card-title">Today's Visit Purposes</h3>
@@ -192,7 +218,7 @@ const DashboardPage = () => {
           </>
         )}
 
-        {/* ── INSIDE NOW ─────────────────────────────────────────── */}
+        {/* ── INSIDE NOW ───────────────────────── */}
         {activeTab === 'inside' && (
           <div className="card">
             <h3 className="card-title">
@@ -210,7 +236,7 @@ const DashboardPage = () => {
                   <span>Visitor</span>
                   <span>Purpose</span>
                   <span>Meeting</span>
-                  <span>Check-in</span>
+                  <span>Check-in (IST)</span>
                   <span>Duration</span>
                 </div>
                 {data.currently_inside_list.map((v, i) => (
@@ -224,8 +250,9 @@ const DashboardPage = () => {
                       {v.purpose}
                     </div>
                     <div style={{ color: '#94a3b8', fontSize: 13 }}>{v.host_name || '—'}</div>
+                    {/* IST time */}
                     <div style={{ fontSize: 12, color: '#64748b' }}>
-                      {new Date(v.checked_in_at).toLocaleTimeString()}
+                      {toIST(v.checked_in_at)}
                     </div>
                     <div className="duration-pill">{v.minutes_inside} min</div>
                   </div>
@@ -235,7 +262,7 @@ const DashboardPage = () => {
           </div>
         )}
 
-        {/* ── ACTIVITY ───────────────────────────────────────────── */}
+        {/* ── ACTIVITY ─────────────────────────── */}
         {activeTab === 'activity' && (
           <div className="card">
             <h3 className="card-title">Recent Activity</h3>
@@ -262,9 +289,11 @@ const DashboardPage = () => {
                           {v.purpose}
                         </span>
                       </div>
+                      {/* IST time */}
                       <div className="activity-time">
-                        {v.checked_in_at ? new Date(v.checked_in_at).toLocaleTimeString() : ''}
-                        {v.duration_mins && <span> · {v.duration_mins} min</span>}
+                        {v.checked_in_at ? toIST(v.checked_in_at) + ' IST' : ''}
+                        {v.checked_out_at ? ` → Out: ${toIST(v.checked_out_at)} IST` : ''}
+                        {v.duration_mins  ? ` · ${v.duration_mins} min` : ''}
                       </div>
                     </div>
                   </div>
@@ -274,7 +303,7 @@ const DashboardPage = () => {
           </div>
         )}
 
-        {/* ── REPORT ─────────────────────────────────────────────── */}
+        {/* ── REPORT ───────────────────────────── */}
         {activeTab === 'report' && report && (
           <>
             <div className="card">
@@ -296,9 +325,8 @@ const DashboardPage = () => {
                         height: `${maxDaily ? (d.count / maxDaily) * 160 : 0}px`,
                         background: 'linear-gradient(to top, #6366f1, #818cf8)',
                       }} />
-                      <div className="bar-label">
-                        {new Date(d.date).toLocaleDateString('en', { weekday: 'short' })}
-                      </div>
+                      {/* IST date label */}
+                      <div className="bar-label">{toISTDate(d.date)}</div>
                     </div>
                   ))
                 )}

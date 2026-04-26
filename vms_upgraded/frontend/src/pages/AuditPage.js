@@ -48,8 +48,9 @@ const badgeBg = (action = '') => {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const todayStr   = () => new Date().toISOString().split('T')[0];
 const daysAgoStr = (n) => { const d = new Date(); d.setDate(d.getDate()-n); return d.toISOString().split('T')[0]; };
-const fmtDate    = (iso) => iso ? new Date(iso).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : '—';
-const fmtTime    = (iso) => iso ? new Date(iso).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '—';
+const toUTC = (iso) => iso ? (iso.endsWith('Z') ? iso : iso + 'Z') : null;
+const fmtDate    = (iso) => { const d = toUTC(iso); return d ? new Date(d).toLocaleDateString('en-IN',{timeZone:'Asia/Kolkata',day:'2-digit',month:'short',year:'numeric'}) : '—'; };
+const fmtTime    = (iso) => { const d = toUTC(iso); return d ? new Date(d).toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true}) + ' IST' : '—'; };
 const fmtDT      = (iso) => iso ? `${fmtDate(iso)}, ${fmtTime(iso)}` : '—';
 
 const PAGE_LIMIT = 50;
@@ -398,7 +399,7 @@ const AuditPage = () => {
                             {entry.action.replace(/_/g,' ')}
                           </span>
                           <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-                            <span className="audit-time">{new Date(entry.created_at).toLocaleString()}</span>
+                            <span className="audit-time">{fmtDT(entry.created_at)}</span>
                             <button
                               className="audit-detail-btn"
                               onClick={(e) => { e.stopPropagation(); setSelected(entry); }}>

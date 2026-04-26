@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate }   from 'react-router-dom';
+import { Toast }                      from '../components/Loader';
+import useToast                       from '../hooks/useToast';
 
 const purposeLabels = {
   meeting: 'Meeting', delivery: 'Delivery',
@@ -9,15 +11,18 @@ const purposeLabels = {
 const QRDisplayPage = () => {
   const location = useLocation();
   const navigate  = useNavigate();
-  const visit     = location.state?.visit;
+  const visit        = location.state?.visit;
+  const emailSent    = location.state?.email_sent;
+  const emailAddress = location.state?.email_address || '';
 
   const [timeLeft, setTimeLeft] = useState('');
   const [pulse,    setPulse]    = useState(false);
+  const { toast, show, hide }   = useToast();
 
+  // Countdown timer + pulse
   useEffect(() => {
     if (!visit) { navigate('/register'); return; }
 
-    // Countdown timer
     const update = () => {
       const exp  = new Date(visit.qr_expires);
       const now  = new Date();
@@ -29,20 +34,27 @@ const QRDisplayPage = () => {
     };
     update();
     const t = setInterval(update, 1000);
-
-    // Pulse animation every 3 seconds
     const p = setInterval(() => {
       setPulse(true);
       setTimeout(() => setPulse(false), 600);
     }, 3000);
-
     return () => { clearInterval(t); clearInterval(p); };
   }, [visit, navigate]);
 
-  if (!visit) return null;
+  // Email toast — sirf tab dikhao jab visitor ne email diya ho
+  useEffect(() => {
+    if (!emailAddress) return;
+    const timer = setTimeout(() => {
+      if (emailSent) {
+        show(`✉ QR sent to ${emailAddress}`, 'success', 5000);
+      } else {
+        show(`Email not sent — show QR on screen`, 'error', 5000);
+      }
+    }, 700);
+    return () => clearTimeout(timer);
+  }, [emailAddress, emailSent]); // eslint-disable-line
 
-  const handlePrint = () => window.print();
-  const handleRegisterAnother = () => navigate('/register');
+  if (!visit) return null;
 
   return (
     <div className="page-bg">
@@ -58,15 +70,10 @@ const QRDisplayPage = () => {
         {/* QR Card */}
         <div className="qr-card">
           <div className={`qr-wrapper ${pulse ? 'pulse' : ''}`}>
-            <img
-              src={visit.qr_image}
-              alt="Visitor QR Code"
-              className="qr-image"
-            />
+            <img src={visit.qr_image} alt="Visitor QR Code" className="qr-image" />
             <div className="qr-scan-line" />
           </div>
 
-          {/* Visitor details */}
           <div className="visitor-info-grid">
             <div className="info-row">
               <span className="info-icon">👤</span>
@@ -100,7 +107,6 @@ const QRDisplayPage = () => {
             </div>
           </div>
 
-          {/* Token */}
           <div className="token-display">
             <span className="token-label">Token</span>
             <code className="token-code">{visit.qr_token}</code>
@@ -132,10 +138,14 @@ const QRDisplayPage = () => {
 
         {/* Actions */}
         <div className="qr-actions">
-          <button className="btn-secondary" onClick={handlePrint}>🖨 Print QR</button>
-          <button className="btn-primary" onClick={handleRegisterAnother}>+ Register Another</button>
+          <button className="btn-secondary" onClick={() => window.print()}>🖨 Print QR</button>
+          <button className="btn-primary"   onClick={() => navigate('/register')}>+ Register Another</button>
         </div>
+
       </div>
+
+      {/* Email toast — existing Toast component use kiya */}
+      {toast && <Toast message={toast.message} type={toast.type} onClose={hide} />}
     </div>
   );
 };

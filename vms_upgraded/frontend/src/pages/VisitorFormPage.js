@@ -1,16 +1,13 @@
 /**
- * VisitorFormPage — 2-step visitor registration with camera/photo upload.
- *
- * v2 changes:
- *   - Step 1 now includes CameraCapture (optional photo)
- *   - Photo data URI is sent as photo_data in the JSON payload
- *   - Shows whether email will be sent (if visitor provided email)
+ * VisitorFormPage — 2-step visitor registration.
+ * v2.2: Admin/SuperAdmin ke liye QR validity option add kiya.
  */
 import React, { useState, useEffect } from 'react';
-import { useNavigate }   from 'react-router-dom';
+import { useNavigate }          from 'react-router-dom';
 import { visitorAPI, adminAPI } from '../utils/api';
-import { Spinner }       from '../components/Loader';
-import CameraCapture     from '../components/CameraCapture';
+import { Spinner }              from '../components/Loader';
+import CameraCapture            from '../components/CameraCapture';
+import { useAuth }              from '../context/AuthContext';
 
 const purposes = [
   { value: 'meeting',     label: 'Meeting',     icon: '🤝' },
@@ -20,14 +17,28 @@ const purposes = [
   { value: 'other',       label: 'Other',       icon: '📋' },
 ];
 
-const VisitorFormPage = () => {
-  const navigate = useNavigate();
+// QR validity options — only shown to admin/super_admin
+const QR_VALIDITY_OPTIONS = [
+  { value: '',         label: 'Default (from settings)',  icon: '⚙️' },
+  { value: 'one_time', label: 'One Time Use Only',        icon: '1️⃣' },
+  { value: 'hourly',   label: 'Custom Hours',             icon: '⏱' },
+  { value: 'daily',    label: 'Daily (24 hours)',         icon: '📅' },
+  { value: 'weekly',   label: 'Weekly (7 days)',          icon: '📆' },
+  { value: 'monthly',  label: 'Monthly (30 days)',        icon: '🗓' },
+];
 
-  const [loading,   setLoading]   = useState(false);
-  const [branches,  setBranches]  = useState([]);
-  const [errors,    setErrors]    = useState({});
-  const [step,      setStep]      = useState(1);
-  const [photoData, setPhotoData] = useState(null); // base64 data URI from camera/upload
+const VisitorFormPage = () => {
+  const navigate   = useNavigate();
+  const { user }   = useAuth();
+  const isAdmin    = user?.role === 'admin' || user?.role === 'super_admin';
+
+  const [loading,        setLoading]        = useState(false);
+  const [branches,       setBranches]       = useState([]);
+  const [errors,         setErrors]         = useState({});
+  const [step,           setStep]           = useState(1);
+  const [photoData,      setPhotoData]      = useState(null);
+  const [qrValidityType, setQrValidityType] = useState('');
+  const [qrHours,        setQrHours]        = useState('');
 
   const [form, setForm] = useState({
     full_name: '', phone: '', email: '',
@@ -38,7 +49,7 @@ const VisitorFormPage = () => {
   useEffect(() => {
     adminAPI.branches()
       .then(r => setBranches(r.data))
-      .catch(() => {}); // branches list is non-critical
+      .catch(() => {});
   }, []);
 
   const set = (key, val) => {
@@ -46,7 +57,6 @@ const VisitorFormPage = () => {
     setErrors(e => ({ ...e, [key]: '' }));
   };
 
-  // ── Validation ─────────────────────────────────────────────────────────────
   const validateStep1 = () => {
     const e = {};
     if (!form.full_name.trim()) e.full_name = 'Name is required';
@@ -62,6 +72,11 @@ const VisitorFormPage = () => {
   const validateStep2 = () => {
     const e = {};
     if (!form.branch_id) e.branch_id = 'Please select a branch';
+    if (qrValidityType === 'hourly') {
+      const h = parseInt(qrHours, 10);
+      if (!qrHours || isNaN(h) || h < 1 || h > 8760)
+        e.qrHours = 'Enter hours between 1 and 8760';
+    }
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -69,7 +84,6 @@ const VisitorFormPage = () => {
   const handleNext = () => { if (validateStep1()) setStep(2); };
   const handleBack = () => setStep(1);
 
-  // ── Submit ─────────────────────────────────────────────────────────────────
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validateStep2()) return;
@@ -83,17 +97,28 @@ const VisitorFormPage = () => {
         branch_id: parseInt(form.branch_id, 10),
       };
 
-      // Only include optional fields if they actually have values
       if (form.email.trim())        payload.email        = form.email.trim();
       if (form.company_name.trim()) payload.company_name = form.company_name.trim();
       if (form.host_name.trim())    payload.host_name    = form.host_name.trim();
       if (form.notes.trim())        payload.notes        = form.notes.trim();
+      if (photoData)                payload.photo_data   = photoData;
 
-      // Attach photo if the visitor captured/uploaded one
-      if (photoData) payload.photo_data = photoData;
+      // QR validity — only admin sends these
+      if (isAdmin && qrValidityType) {
+        payload.qr_validity_type = qrValidityType;
+        if (qrValidityType === 'hourly' && qrHours)
+          payload.qr_hours = parseInt(qrHours, 10);
+      }
 
       const res = await visitorAPI.register(payload);
-      navigate('/qr-display', { state: { visit: res.data } });
+
+      navigate('/qr-display', {
+        state: {
+          visit:         res.data,
+          email_sent:    res.data.email_sent,
+          email_address: res.data.email_address,
+        },
+      });
 
     } catch (err) {
       const detail = err.response?.data?.detail;
@@ -108,11 +133,13 @@ const VisitorFormPage = () => {
     }
   };
 
+  // QR validity badge shown on step 2 for admin
+  const validityLabel = QR_VALIDITY_OPTIONS.find(o => o.value === qrValidityType)?.label || 'Default';
+
   return (
     <div className="page-bg">
       <div className="page-container animate-fadeIn">
 
-        {/* Header */}
         <div className="page-header">
           <div className="page-icon">🏢</div>
           <h1 className="page-title">Visitor Registration</h1>
@@ -135,11 +162,9 @@ const VisitorFormPage = () => {
         <div className="card">
           <form onSubmit={handleSubmit}>
 
-            {/* ── Step 1: Personal Info + Photo ───────────────────── */}
+            {/* ── Step 1 — Personal Info ── */}
             {step === 1 && (
               <div className="animate-slideIn">
-
-                {/* Camera / upload — optional */}
                 <div className="form-group">
                   <label className="form-label">
                     Visitor Photo <span className="optional">(optional)</span>
@@ -152,9 +177,7 @@ const VisitorFormPage = () => {
 
                 <div className="form-grid-2">
                   <div className="form-group">
-                    <label className="form-label">
-                      Full Name <span className="required">*</span>
-                    </label>
+                    <label className="form-label">Full Name <span className="required">*</span></label>
                     <input
                       className={`form-input ${errors.full_name ? 'input-error' : ''}`}
                       value={form.full_name}
@@ -166,9 +189,7 @@ const VisitorFormPage = () => {
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label">
-                      Phone Number <span className="required">*</span>
-                    </label>
+                    <label className="form-label">Phone Number <span className="required">*</span></label>
                     <input
                       className={`form-input ${errors.phone ? 'input-error' : ''}`}
                       value={form.phone}
@@ -210,21 +231,17 @@ const VisitorFormPage = () => {
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  className="btn-primary btn-full mt-20"
-                  onClick={handleNext}
-                >
+                <button type="button" className="btn-primary btn-full mt-20" onClick={handleNext}>
                   Continue →
                 </button>
               </div>
             )}
 
-            {/* ── Step 2: Visit Details ────────────────────────────── */}
+            {/* ── Step 2 — Visit Details ── */}
             {step === 2 && (
               <div className="animate-slideIn">
 
-                {/* Purpose tiles */}
+                {/* Purpose */}
                 <div className="form-group">
                   <label className="form-label">Purpose of Visit</label>
                   <div className="purpose-grid">
@@ -259,9 +276,7 @@ const VisitorFormPage = () => {
                         </option>
                       ))}
                     </select>
-                    {errors.branch_id && (
-                      <span className="error-text">{errors.branch_id}</span>
-                    )}
+                    {errors.branch_id && <span className="error-text">{errors.branch_id}</span>}
                   </div>
 
                   <div className="form-group">
@@ -277,6 +292,77 @@ const VisitorFormPage = () => {
                   </div>
                 </div>
 
+                {/* ── QR Validity — ADMIN ONLY ─────────────────────────────── */}
+                {isAdmin && (
+                  <div className="form-group" style={{
+                    background: 'linear-gradient(135deg, #f0f4ff, #e8f0fe)',
+                    border: '1.5px solid #c7d2fe',
+                    borderRadius: 10,
+                    padding: '16px 18px',
+                    marginBottom: 16,
+                  }}>
+                    <label className="form-label" style={{ color: '#4338ca', marginBottom: 10 }}>
+                      🔐 QR Code Validity <span style={{ fontSize: 11, fontWeight: 400, color: '#6366f1' }}>(Admin Only)</span>
+                    </label>
+
+                    {/* Option pills */}
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+                      {QR_VALIDITY_OPTIONS.map(opt => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => { setQrValidityType(opt.value); setQrHours(''); }}
+                          style={{
+                            padding: '6px 14px',
+                            borderRadius: 20,
+                            border: qrValidityType === opt.value
+                              ? '2px solid #4f46e5'
+                              : '1.5px solid #c7d2fe',
+                            background: qrValidityType === opt.value ? '#4f46e5' : '#fff',
+                            color: qrValidityType === opt.value ? '#fff' : '#4338ca',
+                            fontSize: 12,
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            transition: 'all .15s',
+                          }}
+                        >
+                          {opt.icon} {opt.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Custom hours input — only for hourly */}
+                    {qrValidityType === 'hourly' && (
+                      <div style={{ marginTop: 8 }}>
+                        <label className="form-label">Number of Hours</label>
+                        <input
+                          className={`form-input ${errors.qrHours ? 'input-error' : ''}`}
+                          type="number"
+                          min="1"
+                          max="8760"
+                          value={qrHours}
+                          onChange={e => { setQrHours(e.target.value); setErrors(err => ({...err, qrHours: ''})); }}
+                          placeholder="e.g. 48 (2 days)"
+                          style={{ maxWidth: 220 }}
+                        />
+                        {errors.qrHours && <span className="error-text">{errors.qrHours}</span>}
+                      </div>
+                    )}
+
+                    {/* Info badge */}
+                    <div style={{ marginTop: 10, fontSize: 12, color: '#6366f1', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span>ℹ️</span>
+                      {qrValidityType === ''        && 'Uses QR_EXPIRY_HOURS from .env settings'}
+                      {qrValidityType === 'one_time' && 'QR becomes invalid after first check-out'}
+                      {qrValidityType === 'hourly'   && `QR valid for ${qrHours || '?'} hour(s) from registration`}
+                      {qrValidityType === 'daily'    && 'QR valid for 24 hours from registration'}
+                      {qrValidityType === 'weekly'   && 'QR valid for 7 days from registration'}
+                      {qrValidityType === 'monthly'  && 'QR valid for 30 days from registration'}
+                    </div>
+                  </div>
+                )}
+
+                {/* Notes */}
                 <div className="form-group">
                   <label className="form-label">
                     Additional Notes <span className="optional">(optional)</span>
