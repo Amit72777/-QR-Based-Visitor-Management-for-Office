@@ -35,7 +35,8 @@ const Navbar = () => {
     { to: '/dashboard', label: '📊 Dashboard', show: isRole('admin', 'super_admin') },
     { to: '/users',     label: '👥 Users',     show: isRole('super_admin') },
     { to: '/branches',  label: '🏢 Branches',  show: isRole('super_admin') },
-    { to: '/audit',     label: '📋 Audit',     show: isRole('super_admin') },
+    { to: '/visitors-list', label: '👤 Visitors', show: isRole('super_admin') },
+    { to: '/audit',        label: '📋 Audit',     show: isRole('super_admin') },
   ].filter(l => l.show);
 
   return (

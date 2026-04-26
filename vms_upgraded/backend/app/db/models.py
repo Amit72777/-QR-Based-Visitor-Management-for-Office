@@ -90,7 +90,8 @@ class Visitor(Base):
     email        = Column(String(150), nullable=True)
     company_name = Column(String(100), nullable=True)
     # NEW: path to uploaded/captured photo (relative to UPLOAD_DIR)
-    photo_path   = Column(String(300), nullable=True)
+    photo_path   = Column(String(300), nullable=True)   # purana — rakhna hai (backward compat)
+    photo_data   = Column(Text,        nullable=True) 
     created_at   = Column(DateTime,    default=datetime.utcnow)
 
     visits = relationship("Visit", back_populates="visitor")

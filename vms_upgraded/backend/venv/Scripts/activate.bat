@@ -8,7 +8,7 @@ if defined _OLD_CODEPAGE (
     "%SystemRoot%\System32\chcp.com" 65001 > nul
 )
 
-set VIRTUAL_ENV=D:\vistorproject\vms_upgraded\backend\venv
+set VIRTUAL_ENV=D:\QRVMSOGit\-QR-Based-Visitor-Management-for-Office\vms_upgraded\backend\venv
 
 if not defined PROMPT set PROMPT=$P$G
 

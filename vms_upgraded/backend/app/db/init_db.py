@@ -22,6 +22,7 @@ REQUIRED_COLUMNS = [
     # (table_name,  column_name,     sql_type)
     ("visitors", "photo_path",      "VARCHAR(300)"),
     ("visits",   "qr_expiry_hours", "INTEGER"),
+    ("visitors", "photo_data",      "TEXT"), 
 ]
 
 

@@ -64,6 +64,7 @@ def register_visitor(
             "email":        visit.visitor.email,
             "company_name": visit.visitor.company_name,
             "photo_path":   visit.visitor.photo_path,
+            "photo_data":   visit.visitor.photo_data,
         } if visit.visitor else None,
         "email_sent":    result["email_sent"],
         "email_address": result["email_address"],
@@ -78,13 +79,13 @@ def list_visitors(
     _:     User    = Depends(require_roles("guard", "admin", "super_admin")),
 ):
     visitors = db.query(Visitor).offset(skip).limit(limit).all()
-    return [{
-        "id":           v.id,
+    return [{"id": v.id,
         "full_name":    v.full_name,
         "phone":        v.phone,
         "email":        v.email,
         "company_name": v.company_name,
         "photo_path":   v.photo_path,
+        "photo_data":   v.photo_data,   # ← NAYA
         "created_at":   v.created_at.isoformat(),
     } for v in visitors]
 
@@ -105,5 +106,6 @@ def get_visitor(
         "email":        v.email,
         "company_name": v.company_name,
         "photo_path":   v.photo_path,
+        "photo_data":   v.photo_data,   # ← NAYA
         "created_at":   v.created_at.isoformat(),
     }

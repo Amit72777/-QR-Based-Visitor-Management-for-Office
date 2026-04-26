@@ -8,6 +8,16 @@ const purposeLabels = {
   interview: 'Interview', maintenance: 'Maintenance', other: 'Other',
 };
 
+// ── Helper: get photo src from visitor object ─────────────────────────────────
+// photo_data = base64 data URI (db se aata hai)
+// photo_path = "db" ya file path
+const getPhotoSrc = (visitor) => {
+  if (!visitor) return null;
+  if (visitor.photo_data && visitor.photo_data.startsWith('data:')) return visitor.photo_data;
+  if (visitor.photo_data) return `data:image/jpeg;base64,${visitor.photo_data}`;
+  return null;
+};
+
 const QRDisplayPage = () => {
   const location = useLocation();
   const navigate  = useNavigate();
@@ -17,7 +27,10 @@ const QRDisplayPage = () => {
 
   const [timeLeft, setTimeLeft] = useState('');
   const [pulse,    setPulse]    = useState(false);
+  const [imgError, setImgError] = useState(false);
   const { toast, show, hide }   = useToast();
+
+  const photoSrc = getPhotoSrc(visit?.visitor);
 
   // Countdown timer + pulse
   useEffect(() => {
@@ -41,7 +54,7 @@ const QRDisplayPage = () => {
     return () => { clearInterval(t); clearInterval(p); };
   }, [visit, navigate]);
 
-  // Email toast — sirf tab dikhao jab visitor ne email diya ho
+  // Email toast
   useEffect(() => {
     if (!emailAddress) return;
     const timer = setTimeout(() => {
@@ -69,6 +82,32 @@ const QRDisplayPage = () => {
 
         {/* QR Card */}
         <div className="qr-card">
+
+          {/* ── Visitor Photo (agar upload kiya tha) ── */}
+          {photoSrc && !imgError && (
+            <div style={{
+              display:        'flex',
+              justifyContent: 'center',
+              marginBottom:   16,
+            }}>
+              <img
+                src={photoSrc}
+                alt="Visitor"
+                onError={() => setImgError(true)}
+                style={{
+                  width:        96,
+                  height:       96,
+                  borderRadius: '50%',
+                  objectFit:    'cover',
+                  border:       '3px solid var(--primary, #6366f1)',
+                  boxShadow:    '0 2px 12px rgba(0,0,0,0.15)',
+                  display:      'block',
+                }}
+              />
+            </div>
+          )}
+
+          {/* QR Code */}
           <div className={`qr-wrapper ${pulse ? 'pulse' : ''}`}>
             <img src={visit.qr_image} alt="Visitor QR Code" className="qr-image" />
             <div className="qr-scan-line" />
@@ -144,7 +183,6 @@ const QRDisplayPage = () => {
 
       </div>
 
-      {/* Email toast — existing Toast component use kiya */}
       {toast && <Toast message={toast.message} type={toast.type} onClose={hide} />}
     </div>
   );

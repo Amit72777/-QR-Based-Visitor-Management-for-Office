@@ -23,6 +23,7 @@ import UsersPage        from './pages/UsersPage';
 import ProfilePage      from './pages/ProfilePage';
 import BranchesPage     from './pages/BranchesPage';
 import AuditPage        from './pages/AuditPage';
+import VisitorsListPage  from './pages/VisitorsListPage';
 
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage  from './pages/ResetPasswordPage';
@@ -100,6 +101,14 @@ const AppRoutes = () => (
       <Layout>
         <ProtectedRoute roles={['super_admin']}>
           <BranchesPage />
+        </ProtectedRoute>
+      </Layout>
+    } />
+
+    <Route path="/visitors-list" element={
+      <Layout>
+        <ProtectedRoute roles={['super_admin']}>
+          <VisitorsListPage />
         </ProtectedRoute>
       </Layout>
     } />

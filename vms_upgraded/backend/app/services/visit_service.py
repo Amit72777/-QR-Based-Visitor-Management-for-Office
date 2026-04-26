@@ -21,28 +21,20 @@ from app.core.config      import settings
 log = logging.getLogger(__name__)
 
 
-def _save_photo(photo_data: str, visitor_phone: str) -> str | None:
-    """Base64 photo decode karke disk pe save karo."""
+def _save_photo_to_db(photo_data: str) -> str | None:
+    """
+    Photo ko directly database mein Base64 string ke roop mein store karo.
+    Returns the full base64 data URI (e.g. 'data:image/jpeg;base64,...')
+    """
     try:
-        if "," in photo_data:
-            header, raw = photo_data.split(",", 1)
-            ext = header.split("/")[1].split(";")[0]
-        else:
-            raw, ext = photo_data, "jpg"
-
-        os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
-        safe_phone = "".join(c for c in visitor_phone if c.isalnum())
-        filename   = f"{safe_phone}_{int(datetime.utcnow().timestamp())}.{ext}"
-        filepath   = os.path.join(settings.UPLOAD_DIR, filename)
-
-        with open(filepath, "wb") as f:
-            f.write(base64.b64decode(raw))
-        return filepath
+        # Agar data URI format nahi hai toh add karo
+        if not photo_data.startswith("data:"):
+            photo_data = f"data:image/jpeg;base64,{photo_data}"
+        return photo_data
     except Exception as exc:
-        log.warning("Could not save visitor photo: %s", exc)
+        log.warning("Could not process visitor photo: %s", exc)
         return None
-
-
+    
 class VisitService:
 
     @staticmethod
@@ -83,9 +75,10 @@ class VisitService:
 
         # Photo save karo agar tha
         if payload.photo_data:
-            path = _save_photo(payload.photo_data, payload.phone)
-            if path:
-                visitor.photo_path = path
+            data_uri = _save_photo_to_db(payload.photo_data)
+            if data_uri:
+                visitor.photo_data = data_uri   # DB mein store
+                visitor.photo_path = "db" 
 
         # ── QR validity calculate karo ──────────────────────────────────────
         from app.schemas.schemas import QR_VALIDITY_HOURS
@@ -176,15 +169,16 @@ class VisitService:
                        details={"visitor": visitor.full_name, "duration_mins": duration})
             db.commit()
             return {
-                "message":       f"{visitor.full_name} checked out successfully.",
-                "visit_id":      visit.id,
-                "visitor_name":  visitor.full_name,
-                "visitor_phone": visitor.phone,
-                "host_name":     visit.host_name,
-                "purpose":       visit.purpose.value,
-                "action":        "checked_out",
-                "timestamp":     visit.checked_out_at,
-                "duration_mins": duration,
+                "message":             f"{visitor.full_name} checked out successfully.",
+                "visit_id":            visit.id,
+                "visitor_name":        visitor.full_name,
+                "visitor_phone":       visitor.phone,
+                "host_name":           visit.host_name,
+                "purpose":             visit.purpose.value,
+                "action":              "checked_out",
+                "timestamp":           visit.checked_out_at,
+                "duration_mins":       duration,
+                "visitor_photo_data":  visitor.photo_data or "",
             }
 
         # Check-in path
@@ -201,15 +195,16 @@ class VisitService:
                    entity_id=visit.id, details={"visitor": visitor.full_name})
         db.commit()
         return {
-            "message":       f"{visitor.full_name} checked in successfully.",
-            "visit_id":      visit.id,
-            "visitor_name":  visitor.full_name,
-            "visitor_phone": visitor.phone,
-            "host_name":     visit.host_name,
-            "purpose":       visit.purpose.value,
-            "action":        "checked_in",
-            "timestamp":     visit.checked_in_at,
-            "duration_mins": None,
+            "message":             f"{visitor.full_name} checked in successfully.",
+            "visit_id":            visit.id,
+            "visitor_name":        visitor.full_name,
+            "visitor_phone":       visitor.phone,
+            "host_name":           visit.host_name,
+            "purpose":             visit.purpose.value,
+            "action":              "checked_in",
+            "timestamp":           visit.checked_in_at,
+            "duration_mins":       None,
+            "visitor_photo_data":  visitor.photo_data or "",
         }
 
     @staticmethod

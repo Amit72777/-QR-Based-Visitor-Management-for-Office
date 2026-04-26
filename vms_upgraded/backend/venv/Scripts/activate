@@ -38,7 +38,7 @@ deactivate () {
 # unset irrelevant variables
 deactivate nondestructive
 
-VIRTUAL_ENV="D:\vistorproject\vms_upgraded\backend\venv"
+VIRTUAL_ENV="D:\QRVMSOGit\-QR-Based-Visitor-Management-for-Office\vms_upgraded\backend\venv"
 export VIRTUAL_ENV
 
 _OLD_VIRTUAL_PATH="$PATH"

@@ -49,48 +49,110 @@ const MiniBar = ({ value, max, color }) => (
   </div>
 );
 
-/**
- * Backend UTC time ko Indian Standard Time (IST) mein convert karo.
- * Backend "2026-04-24T06:47:48" bhejta hai — Z nahi hota end mein.
- * Isliye manually +5:30 add karte hain.
- */
+/* ── Visitor Photo Component ─────────────────────────────────────────────────
+   - photo_data hai toh circle image dikhao (clickable)
+   - nahi hai toh grey avatar dikhao
+   - Click karne pe fullscreen modal open hota hai
+*/
+const VisitorPhoto = ({ photoData, name }) => {
+  const [open, setOpen] = useState(false);
+
+  if (!photoData || photoData === 'db') {
+    // No photo — grey avatar
+    return (
+      <div style={{
+        width: 38, height: 38, borderRadius: '50%',
+        background: '#1e293b', display: 'flex',
+        alignItems: 'center', justifyContent: 'center',
+        fontSize: 18, color: '#475569', flexShrink: 0,
+        border: '2px solid #334155',
+      }}>
+        👤
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {/* Circle thumbnail — click to open */}
+      <img
+        src={photoData}
+        alt={name}
+        onClick={() => setOpen(true)}
+        title="Click to view photo"
+        style={{
+          width: 38, height: 38, borderRadius: '50%',
+          objectFit: 'cover', cursor: 'pointer', flexShrink: 0,
+          border: '2px solid #6366f1',
+          transition: 'transform 0.2s',
+        }}
+        onMouseOver={e => e.target.style.transform = 'scale(1.15)'}
+        onMouseOut={e  => e.target.style.transform = 'scale(1)'}
+      />
+
+      {/* Fullscreen modal */}
+      {open && (
+        <div
+          onClick={() => setOpen(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'rgba(0,0,0,0.85)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          <div onClick={e => e.stopPropagation()} style={{ textAlign: 'center' }}>
+            <img
+              src={photoData}
+              alt={name}
+              style={{
+                maxWidth: '88vw', maxHeight: '78vh',
+                borderRadius: 16, border: '4px solid #6366f1',
+                boxShadow: '0 8px 40px rgba(0,0,0,0.6)',
+              }}
+            />
+            <div style={{ color: '#e2e8f0', marginTop: 14, fontSize: 16, fontWeight: 600 }}>
+              {name}
+            </div>
+            <button
+              onClick={() => setOpen(false)}
+              style={{
+                marginTop: 14, background: '#6366f1', color: '#fff',
+                border: 'none', borderRadius: 8, padding: '8px 24px',
+                cursor: 'pointer', fontSize: 14, fontWeight: 600,
+              }}
+            >
+              ✕ Close
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
+
 const toIST = (utcString) => {
   if (!utcString) return '—';
   try {
-    // String ke end mein Z lagao taaki browser UTC samjhe
     const normalized = utcString.endsWith('Z') ? utcString : utcString + 'Z';
     return new Date(normalized).toLocaleString('en-IN', {
       timeZone: 'Asia/Kolkata',
-      hour:     '2-digit',
-      minute:   '2-digit',
-      hour12:   true,
+      hour: '2-digit', minute: '2-digit', hour12: true,
     });
-  } catch {
-    return utcString;
-  }
+  } catch { return utcString; }
 };
 
-// Date ke liye — weekday short naam IST mein
 const toISTDate = (dateStr) => {
   if (!dateStr) return '';
   try {
-    // date string "2026-04-24" ko parse karo
     const [y, m, d] = dateStr.split('-').map(Number);
-    const date = new Date(y, m - 1, d); // local date
-    return date.toLocaleDateString('en-IN', { weekday: 'short' });
-  } catch {
-    return dateStr;
-  }
+    return new Date(y, m - 1, d).toLocaleDateString('en-IN', { weekday: 'short' });
+  } catch { return dateStr; }
 };
 
-// Last updated time IST mein
 const nowIST = () =>
   new Date().toLocaleString('en-IN', {
     timeZone: 'Asia/Kolkata',
-    hour:     '2-digit',
-    minute:   '2-digit',
-    second:   '2-digit',
-    hour12:   true,
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true,
   });
 
 const DashboardPage = () => {
@@ -233,6 +295,7 @@ const DashboardPage = () => {
             ) : (
               <div className="visitor-table">
                 <div className="table-header">
+                  <span>Photo</span>
                   <span>Visitor</span>
                   <span>Purpose</span>
                   <span>Meeting</span>
@@ -242,6 +305,10 @@ const DashboardPage = () => {
                 {data.currently_inside_list.map((v, i) => (
                   <div key={v.visit_id} className="table-row animate-slideIn"
                        style={{ animationDelay: `${i * 60}ms` }}>
+                    {/* Photo column */}
+                    <div>
+                      <VisitorPhoto photoData={v.photo_data} name={v.visitor_name} />
+                    </div>
                     <div>
                       <div className="visitor-name">{v.visitor_name}</div>
                       <div className="visitor-phone">{v.visitor_phone}</div>
@@ -250,7 +317,6 @@ const DashboardPage = () => {
                       {v.purpose}
                     </div>
                     <div style={{ color: '#94a3b8', fontSize: 13 }}>{v.host_name || '—'}</div>
-                    {/* IST time */}
                     <div style={{ fontSize: 12, color: '#64748b' }}>
                       {toIST(v.checked_in_at)}
                     </div>
@@ -277,9 +343,13 @@ const DashboardPage = () => {
                   <div key={v.visit_id} className="activity-item animate-slideIn"
                        style={{ animationDelay: `${i * 50}ms` }}>
                     <div className={`activity-dot ${v.status === 'checked_in' ? 'dot-in' : 'dot-out'}`} />
-                    <div className="activity-body">
+                    <div className="activity-body" style={{ flex: 1 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span className="activity-name">{v.visitor_name}</span>
+                        {/* Photo + Name ek saath */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <VisitorPhoto photoData={v.photo_data} name={v.visitor_name} />
+                          <span className="activity-name">{v.visitor_name}</span>
+                        </div>
                         <StatusBadge status={v.status} />
                       </div>
                       <div className="activity-meta">
@@ -289,7 +359,6 @@ const DashboardPage = () => {
                           {v.purpose}
                         </span>
                       </div>
-                      {/* IST time */}
                       <div className="activity-time">
                         {v.checked_in_at ? toIST(v.checked_in_at) + ' IST' : ''}
                         {v.checked_out_at ? ` → Out: ${toIST(v.checked_out_at)} IST` : ''}
@@ -325,7 +394,6 @@ const DashboardPage = () => {
                         height: `${maxDaily ? (d.count / maxDaily) * 160 : 0}px`,
                         background: 'linear-gradient(to top, #6366f1, #818cf8)',
                       }} />
-                      {/* IST date label */}
                       <div className="bar-label">{toISTDate(d.date)}</div>
                     </div>
                   ))
