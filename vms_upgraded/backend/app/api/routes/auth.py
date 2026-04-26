@@ -16,6 +16,17 @@ from app.core.dependencies   import get_current_user
 from app.utils.audit         import log_action
 from fastapi.security         import OAuth2PasswordRequestForm
 
+import secrets
+from datetime                        import timedelta
+from app.db.models                   import PasswordResetToken
+from app.schemas.schemas             import ForgotPasswordRequest, ResetPasswordRequest, MessageResponse
+from app.utils.email                 import send_reset_password_email
+from app.core.config                 import settings
+from app.core.security               import hash_password
+
+import logging
+log = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
@@ -87,3 +98,82 @@ def change_password(
     """Change password — requires the current password for verification."""
     from app.services.user_service import UserService
     return UserService.change_password(current_user, payload, db)
+
+
+@router.post("/forgot-password", response_model=MessageResponse)
+def forgot_password(
+    payload: ForgotPasswordRequest,
+    db:      Session = Depends(get_db),
+):
+    """
+    Request a password reset link.
+    Always returns success (to avoid user enumeration attacks).
+    """
+    user = db.query(User).filter(
+        User.email     == payload.email,
+        User.is_active == True,
+    ).first()
+
+    if user:
+        # Delete any existing unused tokens for this user
+        db.query(PasswordResetToken).filter(
+            PasswordResetToken.user_id == user.id,
+            PasswordResetToken.used    == False,
+        ).delete()
+
+        # Generate a secure random token
+        token      = secrets.token_urlsafe(32)
+        expires_at = datetime.utcnow() + timedelta(minutes=30)
+
+        reset_token = PasswordResetToken(
+            user_id    = user.id,
+            token      = token,
+            expires_at = expires_at,
+        )
+        db.add(reset_token)
+        db.commit()
+
+        # Build reset link and send email
+        reset_link = f"{settings.FRONTEND_URL}/reset-password?token={token}"
+        send_reset_password_email(
+            to_email   = user.email,
+            user_name  = user.full_name,
+            reset_link = reset_link,
+        )
+
+        log.info("Password reset requested for user %s", user.email)
+
+    return MessageResponse(message="If that email exists, a reset link has been sent.")
+
+
+@router.post("/reset-password", response_model=MessageResponse)
+def reset_password(
+    payload: ResetPasswordRequest,
+    db:      Session = Depends(get_db),
+):
+    """Reset password using the token from the email link."""
+    reset_token = db.query(PasswordResetToken).filter(
+        PasswordResetToken.token == payload.token,
+        PasswordResetToken.used  == False,
+    ).first()
+
+    if not reset_token:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token.")
+
+    if reset_token.expires_at < datetime.utcnow():
+        raise HTTPException(status_code=400, detail="Reset token has expired. Please request a new one.")
+
+    # Update the password
+    user = db.query(User).filter(User.id == reset_token.user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    user.hashed_password = hash_password(payload.new_password)
+
+    # Mark token as used
+    reset_token.used = True
+
+    log.info("Password reset successfully for user %s", user.email)
+    db.commit()
+
+    return MessageResponse(message="Password reset successfully. You can now log in.")

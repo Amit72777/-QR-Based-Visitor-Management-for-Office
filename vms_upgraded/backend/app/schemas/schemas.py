@@ -163,3 +163,15 @@ class ReportOut(BaseModel):
     daily_counts: List[dict]
     top_hosts:    List[dict]
     total_visits: int
+
+# ─── Password Reset ───────────────────────────────────────────────────────────
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+class ResetPasswordRequest(BaseModel):
+    token:        str
+    new_password: str
+
+class MessageResponse(BaseModel):
+    message: str

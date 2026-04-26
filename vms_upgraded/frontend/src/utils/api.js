@@ -52,6 +52,10 @@ export const authAPI = {
   me:             ()     => api.get('/auth/me'),
   updateProfile:  (data) => api.put('/auth/profile', data),
   changePassword: (data) => api.post('/auth/change-password', data),
+
+
+    forgotPassword: (email)   => api.post('/auth/forgot-password', { email }),
+  resetPassword:  (data)    => api.post('/auth/reset-password', data),
 };
 
 // ─── Visitors ─────────────────────────────────────────────────────────────────

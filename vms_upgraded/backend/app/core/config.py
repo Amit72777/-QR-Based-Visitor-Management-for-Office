@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     # Visitor photo uploads land here. Created automatically on startup.
     UPLOAD_DIR: str = "uploads/photos"
 
+# ── Frontend URL (for reset links) ────────────────────────────────────────
+    FRONTEND_URL: str = "http://localhost:3000"
+
     class Config:
         env_file      = ".env"
         case_sensitive = True

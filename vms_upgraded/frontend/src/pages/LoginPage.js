@@ -85,6 +85,11 @@ const LoginPage = () => {
             </div>
           </div>
 
+<div style={{ textAlign: 'right', marginTop: -8, marginBottom: 8 }}>
+  <a href="/forgot-password" style={{ color: '#6366f1', fontSize: 13 }}>
+    Forgot Password?
+  </a>
+</div>
           {error && (
             <div className="alert alert-error animate-shake">
               <span>⚠</span> {error}

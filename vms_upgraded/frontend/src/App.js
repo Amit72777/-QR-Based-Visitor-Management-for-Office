@@ -24,6 +24,9 @@ import ProfilePage      from './pages/ProfilePage';
 import BranchesPage     from './pages/BranchesPage';
 import AuditPage        from './pages/AuditPage';
 
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import ResetPasswordPage  from './pages/ResetPasswordPage';
+
 
 
 // Smart home redirect based on role
@@ -113,6 +116,9 @@ const AppRoutes = () => (
     <Route path="/unauthorized" element={<Layout><Unauthorized /></Layout>} />
     <Route path="/"             element={<HomeRedirect />} />
     <Route path="*"             element={<Navigate to="/" replace />} />
+
+    <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+<Route path="/reset-password"  element={<ResetPasswordPage />} />
   </Routes>
 );
 

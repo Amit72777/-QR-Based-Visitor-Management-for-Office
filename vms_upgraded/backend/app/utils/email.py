@@ -98,3 +98,72 @@ def send_qr_email(
         # Don't crash the registration — just log and move on
         log.error("Failed to send QR email to %s: %s", to_email, exc)
         return False
+
+def send_reset_password_email(
+    to_email: str,
+    user_name: str,
+    reset_link: str,
+) -> bool:
+    """
+    Send a password reset link email to the user.
+    Returns True if sent successfully, False otherwise.
+    """
+    if not settings.SMTP_ENABLED:
+        log.info("SMTP is disabled — skipping reset email to %s", to_email)
+        return False
+
+    try:
+        msg = MIMEMultipart("related")
+        msg["Subject"] = "Password Reset Request — VisitorQR System"
+        msg["From"]    = settings.SMTP_FROM
+        msg["To"]      = to_email
+
+        html_body = f"""
+        <html><body style="font-family: sans-serif; background:#f8fafc; padding:24px;">
+          <div style="max-width:480px; margin:auto; background:#fff;
+                      border-radius:12px; box-shadow:0 2px 16px rgba(0,0,0,0.08); overflow:hidden;">
+            <div style="background:#1e293b; padding:24px; text-align:center;">
+              <h2 style="color:#f1f5f9; margin:0; font-size:20px;">⬡ VisitorQR System</h2>
+            </div>
+            <div style="padding:28px 32px;">
+              <h3 style="color:#1e293b;">Hello, {user_name}!</h3>
+              <p>We received a request to reset your password.</p>
+              <p>Click the button below to set a new password. This link will expire in <strong>30 minutes</strong>.</p>
+              <div style="text-align:center; margin:28px 0;">
+                <a href="{reset_link}"
+                   style="background:#6366f1; color:#fff; padding:14px 32px;
+                          border-radius:8px; text-decoration:none; font-size:16px; font-weight:600;">
+                  Reset Password
+                </a>
+              </div>
+              <p style="font-size:12px; color:#94a3b8;">
+                If you didn't request this, you can safely ignore this email.<br/>
+                Link expires at: <strong>30 minutes from now</strong>
+              </p>
+              <p style="font-size:11px; color:#cbd5e1; word-break:break-all;">
+                Or copy this link: {reset_link}
+              </p>
+            </div>
+            <div style="background:#f1f5f9; padding:12px 32px; text-align:center;">
+              <p style="font-size:11px; color:#94a3b8; margin:0;">
+                Automated message from VisitorQR — do not reply
+              </p>
+            </div>
+          </div>
+        </body></html>
+        """
+
+        msg.attach(MIMEText(html_body, "html"))
+
+        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as server:
+            server.ehlo()
+            server.starttls()
+            server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+            server.sendmail(settings.SMTP_FROM, to_email, msg.as_string())
+
+        log.info("Password reset email sent to %s", to_email)
+        return True
+
+    except Exception as exc:
+        log.error("Failed to send reset email to %s: %s", to_email, exc)
+        return False

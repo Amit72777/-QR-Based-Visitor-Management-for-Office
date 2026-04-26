@@ -8,7 +8,7 @@ This handles databases created by v1 that were never migrated.
 import logging
 from sqlalchemy     import text
 from sqlalchemy.orm import Session
-from app.db.models  import Base, User, Branch, UserRole
+from app.db.models import Base, User, Branch, Visitor, Visit, AuditLog, PasswordResetToken, UserRole
 from app.db.session import engine
 from app.core.security import hash_password
 from app.core.config   import settings
